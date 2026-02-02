@@ -1,0 +1,86 @@
+const express = require('express')
+const jwt = require('jsonwebtoken')
+const bcrypt = require('bcryptjs')
+const cp = require('cookie-parser')
+
+const app = express()
+app.use(express.json())
+app.use(cp())
+
+const users=[]
+const refreshtokens = []
+
+
+function authenticate(req,res,next){
+    const authHeader = req.headers.authorization;
+    if(!authHeader) return res.status(401);
+    const token=authHeader.split(" ")[1];
+
+    jwt.verify(token,"ACCESS_SECRET", (err,user)=>{
+        if(err) return res.status(403);
+        req.user=user;
+        next()
+    })
+}
+
+app.get("/dashboard", authenticate, (req, res) => {
+  res.json({
+    message: "Welcome to dashboard",
+    userId: req.user.userId,
+  });
+});
+
+
+app.post('/signup', async (req,res)=>{
+    const {username, password }= req.body
+    const hassedpassword = await bcrypt.hash(password,10)
+    users.push({
+        id:users.length+1,
+        username,
+        hassedpassword
+    })
+    res.json({message:"userCreated"})
+})
+
+
+
+app.post('/login', async (req,res)=>{
+    const {username,password} = req.body
+    const user = users.find(u=>u.username === username)
+    if (!user) return res.status(401).json({message:"Invalid credentials"});
+    const isValid = await bcrypt.compare(password,user.hassedpassword);
+    if(!isValid) return res.status(401).json({message:"Invalid credentials"});
+
+    const accesstoken = jwt.sign({userId:user.id},"ACCESS_SECRET", {expiresIn:"15m"})
+    const refreshToken = jwt.sign({userId:user.id}, "accesskey", {expiresIN:"7d"})
+    refreshtokens.push(refreshToken)
+    res.cookie("refreshtoken", refreshToken,{
+        httpOnly:true,
+        sameSite:'strict'
+    })
+    res.json(accesstoken)
+
+})
+
+app.post("/refresh", (req,res)=>{
+    const refreshToken = req.cookies.refreshToken;
+    if(!refreshToken) return res.status(401);
+    if(!refreshtokens.includes(refreshToken)) return res.status(403);
+    jwt.verify(refreshToken,"accesskey",(err,user)=>{
+        if(err)return res.status(403);
+        const newAccessToken=jwt.sign({userId:user.userId},"ACCESS_SECRET",{expiresIn:'15m'})
+        res.json({accessToken:newAccessToken})
+    })
+
+})
+app.post("/logout", (req,res)=>{
+    const refreshToken = req.cookies.refreshToken;
+
+    refreshtokens.splice(refreshtokens.indexOf(refreshToken),1);
+    res.clearCookie("refreshToken")
+    res.json({message:"logged out"})
+})
+
+app.listen(3000,()=>{
+    console.log(`server listening at port ${3000}`)
+})
