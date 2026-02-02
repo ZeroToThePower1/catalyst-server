@@ -10,9 +10,17 @@ const axios = require('axios');
 
 const app = express();
 
-// CORS CONFIG
+// CORS CONFIG - Added your Netlify frontend URL
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001', 'http://localhost:5500', 'http://127.0.0.1:5500', 'http://127.0.0.1:3001'],
+    origin: [
+        'http://localhost:3000', 
+        'http://127.0.0.1:3000', 
+        'http://localhost:3001', 
+        'http://localhost:5500', 
+        'http://127.0.0.1:5500', 
+        'http://127.0.0.1:3001',
+        'https://catalystt-frontend.netlify.app'
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'authenticate', 'x-refresh-token', 'x-access-token']
@@ -27,10 +35,10 @@ const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || "werwdkl14444";
 const ACCESS_TOKEN_EXPIRY = '7d';
 const REFRESH_TOKEN_EXPIRY = '30d';
 
-// MongoDB connection
-mongoose.connect('mongodb://localhost:27017/catalyst')
+// MongoDB connection - UPDATED WITH YOUR CONNECTION STRING
+mongoose.connect('mongodb+srv://chaudharsami324_db_user:<db_password>@cluster0.hmsc2is.mongodb.net/catalyst?retryWrites=true&w=majority&appName=Cluster0')
     .then(() => {
-        console.log('✅ Database connected');
+        console.log('✅ Database connected to MongoDB Atlas');
     })
     .catch((err) => {
         console.log('❌ Database error:', err);
@@ -51,13 +59,13 @@ const userSchema = new mongoose.Schema({
     Hashedpassword: String,
 });
 
-// Chat Schema
+// Chat Schema - UPDATED: Auto delete after 12 hours (43200 seconds)
 const savedChatSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'users' },
     roomId: String,
     username: String,
     message: String,
-    timestamp: { type: Date, default: Date.now }
+    timestamp: { type: Date, default: Date.now, expires: 43200 } // 12 hours = 43200 seconds
 });
 
 const refreshTokenSchema = new mongoose.Schema({
@@ -99,15 +107,8 @@ const gameRoomSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now, expires: 3600 }
 });
 
-const gameLeaderboardSchema = new mongoose.Schema({
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'users' },
-    username: String,
-    score: Number,
-    gamesPlayed: Number,
-    gamesWon: Number,
-    lastPlayed: Date,
-    weekStart: Date,
-});
+// REMOVED: gameLeaderboardSchema
+// REMOVED: GameLeaderboardModel
 
 const gameInviteSchema = new mongoose.Schema({
     fromUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'users' },
@@ -119,7 +120,7 @@ const gameInviteSchema = new mongoose.Schema({
 });
 
 const GameRoomModel = mongoose.model("gamerooms", gameRoomSchema);
-const GameLeaderboardModel = mongoose.model("gameleaderboards", gameLeaderboardSchema);
+// REMOVED: GameLeaderboardModel
 const GameInviteModel = mongoose.model("gameinvites", gameInviteSchema);
 const noteslinks_model = mongoose.model("notes-links", noteslinks);
 const UserModel = mongoose.model("users", userSchema);
@@ -245,45 +246,7 @@ const prepareQuestionForDisplay = (transformedQuestion) => {
     };
 };
 
-const updateLeaderboard = async (players) => {
-    const weekStart = new Date();
-    weekStart.setHours(0, 0, 0, 0);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-
-    for (const player of players) {
-        let leaderboardEntry = await GameLeaderboardModel.findOne({
-            userId: player.userId,
-            weekStart
-        });
-
-        if (!leaderboardEntry) {
-            leaderboardEntry = new GameLeaderboardModel({
-                userId: player.userId,
-                username: player.username,
-                score: 0,
-                gamesPlayed: 0,
-                gamesWon: 0,
-                weekStart,
-                lastPlayed: new Date()
-            });
-        }
-
-        leaderboardEntry.score += player.score;
-        leaderboardEntry.gamesPlayed += 1;
-
-        // Check if this player won (has highest score)
-        const playerScores = players.map(p => p.score);
-        const maxScore = Math.max(...playerScores);
-        const isWinner = player.score === maxScore && playerScores.filter(s => s === maxScore).length === 1;
-
-        if (isWinner) {
-            leaderboardEntry.gamesWon += 1;
-        }
-
-        leaderboardEntry.lastPlayed = new Date();
-        await leaderboardEntry.save();
-    }
-};
+// REMOVED: updateLeaderboard function
 
 // Helper function to fetch questions from URL
 async function fetchQuestionsFromUrl(url) {
@@ -545,6 +508,26 @@ app.get("/chat/private/:otherUserId", authenticate, async (req, res) => {
         res.json(messages);
     } catch (error) {
         console.error('Get chat error:', error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+// Cleanup old chats endpoint (optional)
+app.post('/chat/cleanup', authenticate, async (req, res) => {
+    try {
+        // MongoDB TTL index will auto-delete chats after 12 hours
+        // This endpoint is just for manual cleanup if needed
+        const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
+        const result = await savedChatModel.deleteMany({
+            timestamp: { $lt: twelveHoursAgo }
+        });
+        
+        res.json({
+            message: `Cleaned up ${result.deletedCount} old chat messages`,
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        console.error('Chat cleanup error:', error);
         res.status(500).json({ message: "Internal server error" });
     }
 });
@@ -890,9 +873,6 @@ app.post('/games/next-question/:roomCode', authenticate, async (req, res) => {
             room.gameState = 'finished';
             await room.save();
 
-            // Update leaderboard
-            await updateLeaderboard(room.players);
-
             // Emit game finished
             const io = req.app.get('socketio');
             if (io) {
@@ -1024,7 +1004,6 @@ app.post('/games/answer/:roomCode', authenticate, async (req, res) => {
         if (bothPlayersCompleted) {
             console.log(`🏁 Both players completed all questions! Game finished.`);
             room.gameState = 'finished';
-            await updateLeaderboard(room.players);
             await room.save();
             
             response.gameState = 'finished';
@@ -1054,64 +1033,8 @@ app.post('/games/answer/:roomCode', authenticate, async (req, res) => {
     }
 });
 
-// Update score endpoint (for leaderboard)
-app.post('/games/update-score', authenticate, async (req, res) => {
-    try {
-        const { score, correctAnswers } = req.body;
-        const userId = req.user.userId;
-        const username = req.user.username;
-
-        const weekStart = new Date();
-        weekStart.setHours(0, 0, 0, 0);
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-
-        let leaderboardEntry = await GameLeaderboardModel.findOne({
-            userId: userId,
-            weekStart: weekStart
-        });
-
-        if (!leaderboardEntry) {
-            leaderboardEntry = new GameLeaderboardModel({
-                userId: userId,
-                username: username,
-                score: 0,
-                gamesPlayed: 0,
-                gamesWon: 0,
-                weekStart: weekStart,
-                lastPlayed: new Date()
-            });
-        }
-
-        leaderboardEntry.score += score;
-        leaderboardEntry.gamesPlayed += 1;
-        leaderboardEntry.lastPlayed = new Date();
-
-        await leaderboardEntry.save();
-
-        res.json({ message: 'Score updated successfully', leaderboardEntry });
-
-    } catch (error) {
-        console.error('Update score error:', error);
-        res.status(500).json({ message: "Internal server error" });
-    }
-});
-
-app.get('/games/leaderboard', authenticate, async (req, res) => {
-    try {
-        const weekStart = new Date();
-        weekStart.setHours(0, 0, 0, 0);
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-
-        const leaderboard = await GameLeaderboardModel.find({ weekStart })
-            .sort({ score: -1, gamesWon: -1 })
-            .limit(20);
-
-        res.json(leaderboard);
-    } catch (error) {
-        console.error('Leaderboard error:', error);
-        res.status(500).json({ message: "Internal server error" });
-    }
-});
+// REMOVED: /games/update-score endpoint
+// REMOVED: /games/leaderboard endpoint
 
 app.post('/games/invite/:userId', authenticate, async (req, res) => {
     try {
@@ -1357,7 +1280,14 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
     cors: {
-        origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001', 'http://localhost:5500', 'http://127.0.0.1:5500'],
+        origin: [
+            'http://localhost:3000', 
+            'http://127.0.0.1:3000', 
+            'http://localhost:3001', 
+            'http://localhost:5500', 
+            'http://127.0.0.1:5500',
+            'https://catalystt-frontend.netlify.app'
+        ],
         credentials: true,
         methods: ["GET", "POST"],
         allowedHeaders: ["Content-Type", "Authorization"]
@@ -1473,6 +1403,8 @@ const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`🌐 CORS enabled for: http://localhost:3000, http://127.0.0.1:3000`);
+    console.log(`🌐 CORS enabled for: https://catalystt-frontend.netlify.app`);
+    console.log(`🔗 MongoDB Atlas connected`);
+    console.log(`💬 Chats auto-delete in: 12 hours`);
     console.log(`🔐 Access Token Duration: ${ACCESS_TOKEN_EXPIRY}`);
 });
