@@ -36,7 +36,7 @@ const ACCESS_TOKEN_EXPIRY = '7d';
 const REFRESH_TOKEN_EXPIRY = '30d';
 
 // MongoDB connection - UPDATED WITH YOUR CONNECTION STRING
-mongoose.connect('mongodb+srv://chaudharsami324_db_user:eKJeXqFNHydjPC0I@cluster0.hmsc2is.mongodb.net/catalyst?retryWrites=true&w=majority&appName=Cluster0')
+mongoose.connect('mongodb+srv://chaudharsami324_db_user:oKJoXqFNHyjdjPcOl@cluster0.hmsc2is.mongodb.net/catalyst?retryWrites=true&w=majority&appName=Cluster0')
     .then(() => {
         console.log('✅ Database connected to MongoDB Atlas');
     })
@@ -1408,4 +1408,5 @@ server.listen(PORT, () => {
     console.log(`💬 Chats auto-delete in: 12 hours`);
     console.log(`🔐 Access Token Duration: ${ACCESS_TOKEN_EXPIRY}`);
 });
+
 
