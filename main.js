@@ -1208,6 +1208,30 @@ app.post('/mocks', async (req, res) => {
     }
 })
 
+app.delete('/delnote/:url', async (req,res)=>{
+    try{
+        const url= req.params.url
+        const deleted = await noteslinks_model.findOneAndDelete({url:url})
+        if(!deleted){
+            res.status(404).json({message:"not found"})
+        }
+    }catch(error){
+        res.status(500).json({message:"internal server error"})
+    }
+})
+
+app.delete('/delmock/:url', async (req,res)=>{
+    try{
+        const url= req.params.url
+        const deleted = await mocklinks_model.findOneAndDelete({url:url})
+        if(!deleted){
+            res.status(404).json({message:"not found"})
+        }
+    }catch(error){
+        res.status(500).json({message:"internal server error"})
+    }
+})
+
 // ==================== UTILITY ENDPOINTS ====================
 app.post('/refresh', async (req, res) => {
     try {
@@ -1403,6 +1427,7 @@ server.listen(PORT, () => {
     console.log(`💬 Chats auto-delete in: 12 hours`);
     console.log(`🔐 Access Token Duration: ${ACCESS_TOKEN_EXPIRY}`);
 });
+
 
 
 
