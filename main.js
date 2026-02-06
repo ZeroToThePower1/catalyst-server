@@ -13,7 +13,6 @@ const app = express();
 // CORS CONFIG - Added your Netlify frontend URL
 app.use(cors({
     origin: [
-        'https://catalystt-frontend.netlify.app',
         'https://zerotothepower1.github.io'
     ],
     credentials: true,
@@ -1208,29 +1207,67 @@ app.post('/mocks', async (req, res) => {
     }
 })
 
-app.delete('/delnote/:url', async (req,res)=>{
-    try{
-        const url= req.params.url
-        const deleted = await noteslinks_model.findOneAndDelete({url:url})
-        if(!deleted){
-            res.status(404).json({message:"not found"})
+// Fixed DELETE endpoints
+app.delete('/delnote/:url', async (req, res) => {
+    try {
+        // 1. DECODE URL (important for special characters)
+        const url = decodeURIComponent(req.params.url);
+        
+        // 2. Delete the document
+        const deleted = await noteslinks_model.findOneAndDelete({ url: url });
+        
+        // 3. Check if document was found and deleted
+        if (!deleted) {
+            return res.status(404).json({ 
+                success: false, 
+                message: "Note not found with URL: " + url 
+            });
         }
-    }catch(error){
-        res.status(500).json({message:"internal server error"})
+        
+        // 4. Send success response (you were missing this!)
+        res.status(200).json({ 
+            success: true, 
+            message: "Note deleted successfully",
+            data: deleted
+        });
+        
+    } catch (error) {
+        console.error('Delete note error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: "Internal server error",
+            error: error.message  // Include error details
+        });
     }
-})
+});
 
-app.delete('/delmock/:url', async (req,res)=>{
-    try{
-        const url= req.params.url
-        const deleted = await mocklinks_model.findOneAndDelete({url:url})
-        if(!deleted){
-            res.status(404).json({message:"not found"})
+app.delete('/delmock/:url', async (req, res) => {
+    try {
+        const url = decodeURIComponent(req.params.url);
+        const deleted = await mocklinks_model.findOneAndDelete({ url: url });
+        
+        if (!deleted) {
+            return res.status(404).json({ 
+                success: false, 
+                message: "Mock link not found" 
+            });
         }
-    }catch(error){
-        res.status(500).json({message:"internal server error"})
+        
+        res.status(200).json({ 
+            success: true, 
+            message: "Mock link deleted successfully",
+            data: deleted
+        });
+        
+    } catch (error) {
+        console.error('Delete mock error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: "Internal server error",
+            error: error.message 
+        });
     }
-})
+});
 
 // ==================== UTILITY ENDPOINTS ====================
 app.post('/refresh', async (req, res) => {
@@ -1300,12 +1337,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
         origin: [
-            'http://localhost:3000', 
-            'http://127.0.0.1:3000', 
-            'http://localhost:3001', 
-            'http://localhost:5500', 
-            'http://127.0.0.1:5500',
-            'https://catalystt-frontend.netlify.app'
+            'https://zerotothepower1.github.io'
         ],
         credentials: true,
         methods: ["GET", "POST"],
@@ -1427,6 +1459,7 @@ server.listen(PORT, () => {
     console.log(`💬 Chats auto-delete in: 12 hours`);
     console.log(`🔐 Access Token Duration: ${ACCESS_TOKEN_EXPIRY}`);
 });
+
 
 
 
